@@ -1,0 +1,37 @@
+name: Model Promotion
+on:
+  workflow_dispatch:
+    inputs:
+      job_name: {description: "SageMaker job name", required: true, type: string}
+      force_promote: {description: "Skip eval gate", required: false, type: boolean, default: false}
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: {role-to-assume: "${{ secrets.AWS_DEPLOY_ROLE_ARN }}", aws-region: ap-south-1}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install -r requirements.txt rouge-score bert-score
+      - run: aws s3 cp s3://${{ secrets.S3_BUCKET_MODELS }}/model-artifacts/${{ inputs.job_name }}/ /tmp/new-model/ --recursive
+      - run: aws s3 cp s3://${{ secrets.S3_BUCKET_MODELS }}/eval/eval_set.jsonl /tmp/eval_set.jsonl
+      - name: Eval gate
+        if: ${{ !inputs.force_promote }}
+        run: python mlops/evaluate.py --model-path /tmp/new-model --eval-path /tmp/eval_set.jsonl --job-name ${{ inputs.job_name }}
+      - name: Hot-swap
+        run: |
+          python -c "
+          import requests, os
+          r = requests.post(os.environ['PROD_URL']+'/admin/model/reload', headers={'X-Admin-Token':os.environ['ADMIN_TOKEN']})
+          print('Live version:', r.json()['version'])
+          "
+        env: {PROD_URL: "${{ secrets.PROD_URL }}", ADMIN_TOKEN: "${{ secrets.ADMIN_TOKEN }}"}
+      - name: Slack
+        if: always()
+        run: |
+          MSG=$([ "${{ job.status }}" = "success" ] && echo "✅ Model promoted" || echo "❌ Promotion failed")
+          curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} -d "{\"text\":\"$MSG | ${{ inputs.job_name }}\"}"

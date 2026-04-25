@@ -1,0 +1,53 @@
+name: CI
+on:
+  push: {branches: [main]}
+  pull_request: {branches: [main]}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install ruff mypy
+      - run: ruff check app/ mlops/ asr/ model/
+      - run: mypy app/ --ignore-missing-imports
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: {POSTGRES_DB: devynn_test, POSTGRES_USER: devynn, POSTGRES_PASSWORD: devynn}
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 10s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      DATABASE_URL: postgresql+asyncpg://devynn:devynn@localhost/devynn_test
+      REDIS_URL: redis://localhost:6379/0
+      MODEL_PATH: mock
+      WHISPER_MODEL_SIZE: mock
+      ALLOWED_ORIGIN: http://localhost:3000
+      ADMIN_TOKEN: test-token
+      AWS_REGION: ap-south-1
+      S3_BUCKET_AUDIO: mock-bucket
+      S3_BUCKET_MODELS: mock-bucket
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install -r requirements.txt pytest pytest-asyncio httpx
+      - run: alembic upgrade head
+      - run: pytest tests/ -v --tb=short
+
+  docker-build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t devynn-app .
+      - run: docker run --rm -e MODEL_PATH=mock devynn-app python -c "from app.main import app; print('OK')"
