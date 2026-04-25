@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from app.api.routes import auth, health, session, upload
+from app.api.routes import auth, health, session, upload, realtime
 from app.core.config import settings
 
 # ---------------------------------------------------------------------------
@@ -54,6 +54,17 @@ async def lifespan(application: FastAPI):
     else:
         await llm.load("mock", "mock-version")
     application.state.llm = llm
+    
+    if os.environ.get("WHISPER_MODEL_SIZE", "mock") != "mock":
+        from faster_whisper import WhisperModel
+        application.state.whisper = WhisperModel(os.environ.get("WHISPER_MODEL_SIZE", "base.en"), device="cpu", compute_type="int8")
+    else:
+        class MockWhisper:
+            def transcribe(self, *args, **kwargs):
+                class Segment:
+                    text = "mock websocket transcript"
+                return [Segment()], None
+        application.state.whisper = MockWhisper()
 
     yield
     application.state.llm = None
@@ -127,6 +138,7 @@ app.include_router(health.router, tags=["health"])
 app.include_router(auth.router)
 app.include_router(upload.router, tags=["upload"])
 app.include_router(session.router)
+app.include_router(realtime.router, tags=["realtime"])
 
 # Jinja2 templates
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))

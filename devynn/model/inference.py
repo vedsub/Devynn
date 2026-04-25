@@ -1,15 +1,15 @@
 import os
 import torch
 
+def build_prompt(transcript: str, domain: str) -> str:
+    system_prompt = f"You are Devynn, an expert {domain} interviewer. Ask a concise, insightful follow-up question based on the user's answer."
+    return f"<s>[INST] {system_prompt}\n\nUser: {transcript} [/INST]"
+
 def generate_output(transcript: str, domain: str, model, tokenizer):
     if os.environ.get("MODEL_PATH") == "mock":
         return f"Mock follow-up question for {domain}.\nGrammar:\nMock grammar note."
         
-    prompt = (
-        f"You are now conducting an interview for the {domain} role.\n"
-        f"The candidate said: {transcript}\n"
-        f"Formulate a thoughtful follow-up question."
-    )
+    prompt = build_prompt(transcript, domain)
     
     max_new_tokens = 200
     model_input = tokenizer(prompt, return_tensors="pt")

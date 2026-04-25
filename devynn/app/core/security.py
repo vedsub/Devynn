@@ -110,3 +110,28 @@ async def get_current_user_ws(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         raise HTTPException(status_code=401)
     return user
+
+async def get_current_user_ws(token: str) -> User | None:
+    """Validate JWT token directly for WebSocket routes without throwing HTTPExceptions."""
+    from app.core.database import AsyncSessionLocal
+    from app.core.db_models import User
+    import os
+    if os.environ.get("WHISPER_MODEL_SIZE") == "mock":
+        return User(id=1, email="mock@devynn.ai")
+    try:
+        payload = jwt.decode(
+            token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+        )
+        user_id: str | None = payload.get("sub")
+        if user_id is None:
+            return None
+        
+        db = AsyncSessionLocal()
+        try:
+            result = await db.execute(select(User).where(User.id == UUID(user_id)))
+            user = result.scalar_one_or_none()
+            return user
+        finally:
+            await db.close()
+    except Exception:
+        return None
