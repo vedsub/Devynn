@@ -1,0 +1,12 @@
+{
+    "Name": "devynn-weekly-retrain",
+    "ScheduleExpression": "cron(0 2 ? * SUN *)",
+    "State": "ENABLED",
+    "Description": "Triggers Devynn MLOps weekly training cycle every Sunday at 02:00 AM UTC",
+    "Targets": [
+        {
+            "Id": "lambda-retrain",
+            "Arn": "LAMBDA_ARN_PLACEHOLDER"
+        }
+    ]
+}

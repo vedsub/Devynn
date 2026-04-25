@@ -39,9 +39,11 @@ async def lifespan(application: FastAPI):
     application.state.cache = cache
 
     llm = LLMService()
-    if os.environ.get("MODEL_PATH") != "mock":
+    if os.environ.get("MODEL_PATH", "mock") != "mock":
         try:
-            await llm.load(settings.MODEL_PATH or "akshatshaw/mistral-interview-finetune", settings.MODEL_VERSION)
+            # If MODEL_PATH is empty string, the service will load from dynamo registry
+            path_val = settings.MODEL_PATH if settings.MODEL_PATH is not None else ""
+            await llm.load(path_val, settings.MODEL_VERSION)
         except Exception as e:
             print("Failed to load model:", e)
     else:
@@ -75,6 +77,34 @@ async def flush_cache(
     if cache:
         await cache.flush()
     return {"status": "flushed"}
+
+@app.post("/admin/model/reload", tags=["admin"])
+async def reload_model(request: Request):
+    admin_token = request.headers.get("x-admin-token")
+    if admin_token != settings.ADMIN_TOKEN:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+    
+    llm = request.app.state.llm
+    if llm:
+        await llm.load("")  # this triggers the registry check
+        return {"status": "reloaded", "version": llm.version}
+    return {"status": "error", "detail": "llm not initialized"}
+
+@app.get("/model/version", tags=["public"])
+async def get_model_version(request: Request):
+    version = request.app.state.llm.version if request.app.state.llm else "unknown"
+    import boto3
+    from boto3.dynamodb.conditions import Attr
+    import os
+    table = boto3.resource("dynamodb", region_name=os.environ.get("AWS_REGION", "us-east-1")).Table("devynn-model-registry")
+    try:
+        items = table.scan(FilterExpression=Attr("approved").eq(True))["Items"]
+        items = sorted(items, key=lambda x: x["created_at"], reverse=True)[:5]
+    except Exception:
+        items = []
+    
+    return {"current_version": version, "history": items}
 
 # CORS
 app.add_middleware(

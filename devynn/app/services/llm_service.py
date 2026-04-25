@@ -19,6 +19,22 @@ class LLMService:
     async def load(self, model_path: str, version: str = "unknown"):
         # Run sync model loading in executor so it doesn't block event loop
         loop = asyncio.get_event_loop()
+        
+        if not model_path:
+            import os
+            import subprocess
+            from mlops.registry import get_latest_approved
+            
+            latest = await loop.run_in_executor(None, get_latest_approved)
+            s3_path = latest["s3_path"]
+            version = latest["version"]
+            out_path = f"/tmp/devynn-model/{version}"
+            
+            if not os.path.exists(out_path):
+                os.makedirs(out_path, exist_ok=True)
+                await loop.run_in_executor(None, lambda: subprocess.run(["aws", "s3", "sync", s3_path, out_path], check=True))
+            model_path = out_path
+
         await loop.run_in_executor(None, lambda: self._load_sync(model_path))
         self._version = version
         self._loaded = True

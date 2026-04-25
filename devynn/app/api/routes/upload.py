@@ -86,6 +86,27 @@ async def _bg_upload_s3(file_bytes: bytes, session_id: str, turn_num: int):
     await upload_audio(file_bytes, session_id, turn_num)
 
 
+async def _bg_log_flywheel(session_id: str, domain: str, transcript: str, ai_response: str, pace_label: str, wps: float, model_version: str):
+    """Log the turn to the training data flywheel bucket on S3."""
+    from app.services.flywheel_service import log_training_candidate
+    import uuid
+
+    class DummyTurn:
+        def __init__(self):
+            self.transcript = transcript
+            self.ai_response = ai_response
+            self.pace_label = pace_label
+            self.wps = wps
+            self.model_version = model_version
+
+    class DummySession:
+        def __init__(self):
+            self.id = session_id
+            self.domain = domain
+
+    await log_training_candidate(DummyTurn(), DummySession())
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -154,6 +175,16 @@ async def upload_audio_endpoint(
             llm.version,
             latency_ms,
         )
+        background_tasks.add_task(
+            _bg_log_flywheel,
+            str(session_id),
+            domain,
+            transcript,
+            ai_response,
+            pace_label_val,
+            wps,
+            llm.version,
+        )
     background_tasks.add_task(_bg_upload_s3, file_bytes, str(session_id or file_id), turn_num)
 
     return UploadResponse(
@@ -217,6 +248,7 @@ async def upload_stream(
             background_tasks.add_task(
                 _bg_save_turn, str(session_id), turn_num, transcript, None, pace_label_val, wps, cached['ai_response'], cached.get('grammar_notes', []), llm.version, int((time.perf_counter() - start) * 1000)
             )
+            background_tasks.add_task(_bg_log_flywheel, str(session_id), domain, transcript, cached['ai_response'], pace_label_val, wps, llm.version)
         background_tasks.add_task(_bg_upload_s3, file_bytes, str(session_id or file_id), turn_num)
         return StreamingResponse(event_stream_cached(), media_type="text/event-stream", headers={"Cache-Control":"no-cache", "X-Accel-Buffering":"no", "X-Cache":"HIT"})
 
@@ -258,6 +290,7 @@ async def upload_stream(
         
         if session_id:
             await _bg_save_turn(str(session_id), turn_num, transcript, None, pace_label_val, wps, full_text, [], llm.version, int((time.perf_counter() - start) * 1000))
+            background_tasks.add_task(_bg_log_flywheel, str(session_id), domain, transcript, full_text, pace_label_val, wps, llm.version)
             
     background_tasks.add_task(_bg_upload_s3, file_bytes, str(session_id or file_id), turn_num)
     return StreamingResponse(event_stream_miss(), media_type="text/event-stream", headers={"Cache-Control":"no-cache", "X-Accel-Buffering":"no", "X-Cache":"MISS"})
