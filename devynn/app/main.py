@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from app.api.routes import health, upload, session
+from app.api.routes import auth, health, session, upload
 from app.core.config import settings
 
 # ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@ async def lifespan(application: FastAPI):
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="Devynn – AI Interview Assistant",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -64,8 +64,9 @@ app.add_middleware(
 
 # Routers
 app.include_router(health.router, tags=["health"])
+app.include_router(auth.router)
 app.include_router(upload.router, tags=["upload"])
-app.include_router(session.router, tags=["session"])
+app.include_router(session.router)
 
 # Jinja2 templates
 templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))

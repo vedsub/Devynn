@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 class UploadResponse(BaseModel):
@@ -35,3 +35,36 @@ class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
     model_version: str
+
+
+# ---------------------------------------------------------------------------
+# Auth schemas
+# ---------------------------------------------------------------------------
+class AuthRegister(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+# ---------------------------------------------------------------------------
+# Turn schema
+# ---------------------------------------------------------------------------
+class TurnResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    session_id: UUID
+    sequence_num: int
+    transcript: str
+    audio_s3_key: Optional[str] = None
+    pace_label: str
+    wps: float
+    ai_response: str
+    grammar_notes: list
+    model_version: str
+    latency_ms: int
+    created_at: datetime

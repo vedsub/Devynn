@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     MODEL_PATH: str = ""
     WHISPER_MODEL_SIZE: str = "base"
     MODEL_VERSION: str = "mistral-v1"
+    JWT_SECRET: str = "change-me-to-a-random-secret"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 60
 
 
 settings = Settings()

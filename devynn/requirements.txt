@@ -1,8 +1,15 @@
 fastapi
 uvicorn[standard]
 pydantic-settings
+pydantic[email]
 python-multipart
 jinja2
+sqlalchemy[asyncio]
+asyncpg
+alembic
+python-jose[cryptography]
+passlib[bcrypt]
+aioboto3
 torch
 pandas
 faster_whisper
