@@ -24,6 +24,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
+from app.core.logging_config import configure_logging, RequestIDMiddleware
+from app.middleware.metrics import CloudWatchMetricsMiddleware
+
 # ---------------------------------------------------------------------------
 # Lifespan – load heavy models once at startup
 # ---------------------------------------------------------------------------
@@ -31,6 +34,8 @@ if str(PROJECT_ROOT) not in sys.path:
 async def lifespan(application: FastAPI):
     """Load caching and LLM models once at startup."""
     import os
+    configure_logging()
+    
     from app.services.cache_service import CacheService
     from app.services.llm_service import LLMService
     
@@ -109,13 +114,15 @@ async def get_model_version(request: Request):
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.ALLOWED_ORIGIN],
+    allow_origins=[settings.ALLOWED_ORIGIN] if settings.ALLOWED_ORIGIN else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(CloudWatchMetricsMiddleware)
 
-# Routers
+# ---------------------------------------------------------------------------Routers
 app.include_router(health.router, tags=["health"])
 app.include_router(auth.router)
 app.include_router(upload.router, tags=["upload"])

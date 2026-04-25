@@ -23,3 +23,4 @@ pytest
 redis
 rouge-score
 bert-score
+structlog

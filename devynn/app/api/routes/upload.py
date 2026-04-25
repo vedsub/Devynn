@@ -21,9 +21,10 @@ from app.core.database import get_db
 from app.core.db_models import User
 from app.core.security import get_current_user
 from app.api.deps import get_cache, get_llm
+from app.core.logging_config import get_logger
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Pace helpers
@@ -149,17 +150,21 @@ async def upload_audio_endpoint(
     pace_label_val = _pace_label(wps)
     turn_num = 1
     
+    logger.info("asr_done", event="asr_done", wps=wps, pace_label=pace_label_val)
+    
     cached = await cache.get(domain, transcript)
     if cached:
         response.headers["X-Cache"] = "HIT"
         ai_response = cached['ai_response']
         grammar_notes = cached.get('grammar_notes', [])
         latency_ms = int((time.perf_counter() - start) * 1000)
+        logger.info("gen_done", event="gen_done", domain=domain, model_version=llm.version, latency_ms=latency_ms, cache_hit=True)
     else:
         response.headers["X-Cache"] = "MISS"
         ai_response, grammar_notes, _ = await llm.generate(transcript, domain)
         latency_ms = int((time.perf_counter() - start) * 1000)
         await cache.set(domain, transcript, {"ai_response": ai_response, "grammar_notes": grammar_notes})
+        logger.info("gen_done", event="gen_done", domain=domain, model_version=llm.version, latency_ms=latency_ms, cache_hit=False)
 
     if session_id:
         background_tasks.add_task(
@@ -234,10 +239,13 @@ async def upload_stream(
             os.remove(tmp_path)
 
     pace_label_val = _pace_label(wps)
+    logger.info("asr_done", event="asr_done", wps=wps, pace_label=pace_label_val)
+    
     cached = await cache.get(domain, transcript)
     turn_num = 1
 
     if cached:
+        logger.info("gen_done", event="gen_done", domain=domain, model_version=llm.version, latency_ms=int((time.perf_counter() - start) * 1000), cache_hit=True)
         async def event_stream_cached():
             yield f"data: {json.dumps({'type':'transcript','text':transcript,'pace':pace_label_val})}\n\n"
             yield f"data: {json.dumps({'type':'token','text':cached['ai_response']})}\n\n"
@@ -284,6 +292,9 @@ async def upload_stream(
                 await asyncio.sleep(0)
                 
         yield f"data: {json.dumps({'type':'done','model_version':llm.version})}\n\n"
+        
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        logger.info("gen_done", event="gen_done", domain=domain, model_version=llm.version, latency_ms=latency_ms, cache_hit=False)
         
         # update cache directly in stream gen finish
         await cache.set(domain, transcript, {"ai_response": full_text, "grammar_notes": []})
