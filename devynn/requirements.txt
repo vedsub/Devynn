@@ -20,3 +20,4 @@ huggingface_hub
 bitsandbytes
 httpx
 pytest
+redis

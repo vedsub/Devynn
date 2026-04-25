@@ -29,20 +29,28 @@ if str(PROJECT_ROOT) not in sys.path:
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    """Load the Mistral LLM once and store it in app.state."""
+    """Load caching and LLM models once at startup."""
     import os
+    from app.services.cache_service import CacheService
+    from app.services.llm_service import LLMService
+    
+    cache = CacheService()
+    await cache.connect()
+    application.state.cache = cache
 
-    if os.environ.get("MODEL_PATH") == "mock":
-        application.state.llm = None
-    else:
+    llm = LLMService()
+    if os.environ.get("MODEL_PATH") != "mock":
         try:
-            from model.inference import model as llm_model
-            application.state.llm = llm_model
-        except Exception:
-            application.state.llm = None
+            await llm.load(settings.MODEL_PATH or "akshatshaw/mistral-interview-finetune", settings.MODEL_VERSION)
+        except Exception as e:
+            print("Failed to load model:", e)
+    else:
+        await llm.load("mock", "mock-version")
+    application.state.llm = llm
+
     yield
     application.state.llm = None
-
+    application.state.cache = None
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -52,6 +60,21 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+
+# Admin routes for flushing cache
+@app.delete("/admin/cache/flush", tags=["admin"])
+async def flush_cache(
+    request: Request
+):
+    admin_token = request.headers.get("x-admin-token")
+    if admin_token != settings.ADMIN_TOKEN:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+    
+    cache = request.app.state.cache
+    if cache:
+        await cache.flush()
+    return {"status": "flushed"}
 
 # CORS
 app.add_middleware(
