@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+python-multipart
+jinja2
+torch
+pandas
+faster_whisper
+peft
+pyaudio
+transformers
+huggingface_hub
+bitsandbytes
+httpx
+pytest
